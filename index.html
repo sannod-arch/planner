@@ -334,7 +334,7 @@ async function impICS(el){
 
 /* ---- Supabase (debesis) ---- */
 const SB_URL='https://qjqtslpgyflkaxxyhejz.supabase.co';
-const SB_KEY='';   // <-- įklijuokite Supabase „anon / publishable“ raktą (Project Settings → API)
+const SB_KEY='sb_publishable_cCPAFFDaLbpu41EPzdq6ow_0q4x-8uW';   // <-- įklijuokite Supabase „anon / publishable“ raktą (Project Settings → API)
 let sb=null,user=null,skip=false,ready=false,cTimer=null,coolUntil=0;
 let authErr=(()=>{const q=new URLSearchParams(location.hash.slice(1)+'&'+location.search.slice(1));return (q.get('error_description')||'').replace(/\+/g,' ')})();
 try{if(window.supabase&&SB_KEY)sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){}
