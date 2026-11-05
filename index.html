@@ -363,8 +363,12 @@ async function initCloud(){
   ready=true;render();
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()});
 }
-function loginView(){return `<div class="card"><h3>Prisijungimas</h3><p class="mut">Įveskite el. paštą – gausite nuorodą prisijungti. Duomenys bus sinchronizuojami visuose įrenginiuose.</p>
+function loginView(){return `<div class="card"><h3>Prisijungimas</h3><p><button class="pri" onclick="loginG()">Prisijungti su Google</button></p><p class="mut">Arba įveskite el. paštą – gausite nuorodą prisijungti. Duomenys bus sinchronizuojami visuose įrenginiuose.</p>
   ${authErr?`<p style="color:var(--bad)">Klaida: ${esc(authErr)}</p>`:''}<label>El. paštas</label><input type="email" id="lg" autocomplete="email"><p class="acts"><button class="pri" onclick="login()">Gauti nuorodą</button><button onclick="skip=true;render()">Dirbti be prisijungimo</button></p></div>`}
+async function loginG(){
+  const{error}=await sb.auth.signInWithOAuth({provider:'google',options:{redirectTo:location.href.split('#')[0].split('?')[0]}});
+  if(error)toast('Klaida: '+error.message);
+}
 async function login(){
   const e=$('#lg').value.trim();if(!e)return;
   const w=Math.ceil((coolUntil-Date.now())/1000);if(w>0)return toast('Palaukite '+w+' s prieš siunčiant dar kartą');
