@@ -334,8 +334,9 @@ async function impICS(el){
 
 /* ---- Supabase (debesis) ---- */
 const SB_URL='https://qjqtslpgyflkaxxyhejz.supabase.co';
-const SB_KEY='sb_publishable_cCPAFFDaLbpu41EPzdq6ow_0q4x-8uW';   // <-- įklijuokite Supabase „anon / publishable“ raktą (Project Settings → API)
-let sb=null,user=null,skip=false,ready=false,cTimer=null;
+const SB_KEY='';   // <-- įklijuokite Supabase „anon / publishable“ raktą (Project Settings → API)
+let sb=null,user=null,skip=false,ready=false,cTimer=null,coolUntil=0;
+let authErr=(()=>{const q=new URLSearchParams(location.hash.slice(1)+'&'+location.search.slice(1));return (q.get('error_description')||'').replace(/\+/g,' ')})();
 try{if(window.supabase&&SB_KEY)sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){}
 const cst=t=>{const e=$('#cstat');if(e)e.textContent=t};
 async function push(){
@@ -363,11 +364,14 @@ async function initCloud(){
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()});
 }
 function loginView(){return `<div class="card"><h3>Prisijungimas</h3><p class="mut">Įveskite el. paštą – gausite nuorodą prisijungti. Duomenys bus sinchronizuojami visuose įrenginiuose.</p>
-  <label>El. paštas</label><input type="email" id="lg" autocomplete="email"><p class="acts"><button class="pri" onclick="login()">Gauti nuorodą</button><button onclick="skip=true;render()">Dirbti be prisijungimo</button></p></div>`}
+  ${authErr?`<p style="color:var(--bad)">Klaida: ${esc(authErr)}</p>`:''}<label>El. paštas</label><input type="email" id="lg" autocomplete="email"><p class="acts"><button class="pri" onclick="login()">Gauti nuorodą</button><button onclick="skip=true;render()">Dirbti be prisijungimo</button></p></div>`}
 async function login(){
   const e=$('#lg').value.trim();if(!e)return;
-  const{error}=await sb.auth.signInWithOtp({email:e,options:{emailRedirectTo:location.href.split('#')[0]}});
-  toast(error?'Klaida: '+error.message:'Nuoroda išsiųsta – patikrinkite paštą');
+  const w=Math.ceil((coolUntil-Date.now())/1000);if(w>0)return toast('Palaukite '+w+' s prieš siunčiant dar kartą');
+  coolUntil=Date.now()+60000;
+  const{error}=await sb.auth.signInWithOtp({email:e,options:{emailRedirectTo:location.href.split('#')[0].split('?')[0]}});
+  if(error)coolUntil=0;
+  toast(error?(/rate limit/i.test(error.message)?'Per daug laiškų – palaukite apie valandą arba nustatykite savo SMTP':'Klaida: '+error.message):'Nuoroda išsiųsta – naudokite ją tik vieną kartą, naujausią');
 }
 function acctCard(){
   if(!sb)return '';
