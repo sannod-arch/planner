@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="lt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pamokų planuotojas</title>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--tx:#1a1d23;--mut:#6b7280;--ac:#2f6fed;--ok:#168f55;--bad:#d6453d;--ln:#e3e6ec}
+@media(prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1e2126;--tx:#eceef2;--mut:#98a0ad;--ac:#6b9bff;--ok:#3fc582;--bad:#ff7a70;--ln:#2e3239}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx)}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--ln);padding:8px 12px}
+header h1{font-size:17px;margin:0 0 6px}nav{display:flex;gap:4px;overflow-x:auto}
+nav button{flex:1;white-space:nowrap}main{max-width:900px;margin:0 auto;padding:12px}
+button,.btn{font:inherit;border:1px solid var(--ln);background:var(--card);color:var(--tx);padding:7px 12px;border-radius:8px;cursor:pointer;display:inline-block}
+button.on,button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}button.ok{background:var(--ok);color:#fff;border-color:var(--ok)}button.bad{background:var(--bad);color:#fff;border-color:var(--bad)}
+button.sm{padding:4px 9px;font-size:13px}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:14px;padding:14px;margin-bottom:12px}
+.big h2{margin:2px 0;font-size:28px}.big .t{font-size:22px;font-weight:600;color:var(--ac)}
+.tag{display:inline-block;background:var(--bg);border:1px solid var(--ln);border-radius:20px;padding:2px 10px;font-size:13px;margin:6px 4px 0 0}
+small,.mut{color:var(--mut)}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}
+.grid .card{margin:0;padding:10px}.grid b{font-size:16px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--ln);flex-wrap:wrap}.row:last-child{border:0}
+.acts{display:flex;gap:4px;flex-wrap:wrap}.warn{border-color:#e0a21b}
+.st{font-size:12px;border-radius:10px;padding:1px 8px;color:#fff}.st.done{background:var(--ok)}.st.missed{background:var(--bad)}.st.planned{background:var(--ac)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}.cal .h{text-align:center;font-size:12px;color:var(--mut)}
+.day{min-height:64px;background:var(--card);border:1px solid var(--ln);border-radius:8px;padding:3px;cursor:pointer;overflow:hidden}
+.day.sel{outline:2px solid var(--ac)}.day.today .n{color:var(--ac);font-weight:700}.day.out{opacity:.35}.n{font-size:12px}
+.chip{font-size:10px;border-radius:4px;padding:1px 3px;margin-top:2px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chip.planned{background:var(--ac)}.chip.done{background:var(--ok)}.chip.missed{background:var(--bad);text-decoration:line-through}
+.bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;gap:6px}
+label{display:block;margin:8px 0 2px;font-size:13px;color:var(--mut)}
+input,select,textarea{font:inherit;width:100%;padding:7px;border:1px solid var(--ln);border-radius:8px;background:var(--bg);color:var(--tx)}
+input[type=checkbox]{width:auto}.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+#modal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;z-index:20;padding:12px}
+#modal>div{background:var(--card);border-radius:14px;padding:16px;max-width:460px;width:100%;max-height:92vh;overflow:auto}
+#toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:8px 16px;border-radius:20px;display:none;z-index:30}
+.invoice{background:#fff;color:#000;padding:20px;font-family:Georgia,'Times New Roman',serif;font-size:14px;border:1px solid var(--ln);overflow-x:auto}
+.invoice h2{text-align:center;margin:0 0 6px}.invoice .c{text-align:center;margin:2px 0}
+.invoice table{width:100%;border-collapse:collapse;margin:12px 0}.invoice td,.invoice th{border:1px solid #000;padding:5px;font-size:13px}
+.invoice th{text-align:center}.invoice td.r{text-align:right}
+#printArea{display:none}
+@media print{body>*:not(#printArea){display:none!important}#printArea{display:block!important}.invoice{border:0;padding:0}@page{size:A4;margin:18mm}}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+<header><h1>📚 Pamokų planuotojas <small id="fstat"></small> <small id="cstat"></small></h1><nav id="nav"></nav></header>
+<main id="app"></main>
+<div id="modal"></div><div id="toast"></div><div id="printArea"></div>
+<script>
+const K='pamoku_planuotojas_v1';
+const $=s=>document.querySelector(s);
+const pad=n=>String(n).padStart(2,'0');
+const iso=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const pd=s=>new Date(s+'T00:00:00');
+const DAYS=['Sekmadienis','Pirmadienis','Antradienis','Trečiadienis','Ketvirtadienis','Penktadienis','Šeštadienis'];
+const ROM=['VII','I','II','III','IV','V','VI'];
+const MONTHS=['Sausis','Vasaris','Kovas','Balandis','Gegužė','Birželis','Liepa','Rugpjūtis','Rugsėjis','Spalis','Lapkritis','Gruodis'];
+const ST={planned:'Suplanuota',done:'Įvyko',missed:'Neįvyko'};
+const money=c=>(c/100).toFixed(2).replace('.',',');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nl=s=>esc(s).replace(/\n/g,'<br>');
+const uid=()=>Math.random().toString(36).slice(2,9);
+const durT=d=>String(d).replace('.',',')+' val.';
+const endT=(t,d)=>{const[h,m]=t.split(':').map(Number),x=h*60+m+d*60;return pad(Math.floor(x/60)%24)+':'+pad(Math.round(x%60))};
+const cmp=(a,b)=>(a.date+a.start).localeCompare(b.date+b.start);
+
+const DEF={settings:{rate:16,series:'OS',nextNo:3,issuer:'Olivija Šarkovska',receiver:'Goda Dicevičė',
+provider:'Paslaugos teikėjas: Olivija Šarkovska\nAdresas: Linkmenų g. 58-210, Vilnius, LT-08217\nIDV veiklos pažyma Nr. 1548019\nA.s. Nr. LT 247300010168245542\nBankas: Swedbank',
+client:'Paslaugos gavėjas: MB „Švietimo ikonos“\nĮmonės kodas: 307317974\nAdresas: Daugėliškio g. 32A-302A, Vilnius, LT-09300'},
+students:[
+{id:'elze',name:'Elzė',fmt:'nuotolinės',day:1,start:'17:00',dur:1,from:'2026-11-09',until:'',ex:[],active:true},
+{id:'augustas',name:'Augustas',fmt:'nuotolinės',day:1,start:'18:00',dur:1.5,from:'2026-11-09',until:'',ex:[],active:true},
+{id:'julius',name:'Julius',fmt:'nuotolinės',day:4,start:'18:30',dur:1.5,from:'2026-11-12',until:'',ex:[],active:true},
+{id:'motiejus',name:'Motiejus',fmt:'gyvos',day:4,start:'14:00',dur:1.5,from:'2026-11-05',until:'',ex:['2026-11-05'],active:true},
+{id:'emilis',name:'Emilis',fmt:'gyvos',day:4,start:'16:00',dur:1,from:'2026-11-12',until:'',ex:[],active:true}],
+lessons:[],invoices:[]};
+let D;
+try{D=JSON.parse(localStorage.getItem(K))}catch(e){}
+if(!D||!D.students)D=JSON.parse(JSON.stringify(DEF));
+let fh=null,pendH=null,fTimer=null;
+const FT={types:[{description:'JSON',accept:{'application/json':['.json']}}]};
+const idb=(mode,fn)=>new Promise((res,rej)=>{const r=indexedDB.open('pp',1);r.onupgradeneeded=()=>r.result.createObjectStore('k');r.onerror=()=>rej(r.error);r.onsuccess=()=>{const t=r.result.transaction('k',mode),q=fn(t.objectStore('k'));t.oncomplete=()=>res(q.result);t.onerror=()=>rej(t.error)}});
+const fstat=h=>{const e=$('#fstat');if(e)e.innerHTML=h};
+const save=(touch=true)=>{
+  if(touch)D.updated=new Date().toISOString();
+  try{localStorage.setItem(K,JSON.stringify(D))}catch(e){}
+  if(!touch)return;
+  if(fh){clearTimeout(fTimer);fTimer=setTimeout(writeF,400)}
+  if(sb&&user){clearTimeout(cTimer);cTimer=setTimeout(push,800)}
+};
+async function writeF(){try{const w=await fh.createWritable();await w.write(JSON.stringify(D,null,1));await w.close();fstat('💾 '+esc(fh.name)+' ✓')}catch(e){fstat('⚠ nepavyko įrašyti į failą')}}
+async function loadF(h){
+  const t=await(await h.getFile()).text();
+  if(t.trim()){const j=JSON.parse(t);if(!j.students||!j.lessons)throw 0;D=j}
+  fh=h;genAll();fstat('💾 '+esc(fh.name)+' ✓');
+}
+async function pickF(create){
+  if(!window.showOpenFilePicker)return toast('Veikia tik Chrome / Edge kompiuteryje');
+  try{
+    let h;if(create)h=await showSaveFilePicker({...FT,suggestedName:'pamokos.json'});else[h]=await showOpenFilePicker(FT);
+    await loadF(h);await idb('readwrite',s=>s.put(h,'fh'));if(create)await writeF();toast('Failas prijungtas');render();
+  }catch(e){if(e&&e.name!='AbortError')toast('Netinkamas JSON failas')}
+}
+async function reconn(){
+  try{if(await pendH.requestPermission({mode:'readwrite'})=='granted'){await loadF(pendH);pendH=null;render()}}catch(e){toast('Nepavyko prijungti failo')}
+}
+async function initF(){
+  try{
+    const h=await idb('readonly',s=>s.get('fh'));if(!h)return;
+    if(await h.queryPermission({mode:'readwrite'})=='granted'){await loadF(h);render()}
+    else{pendH=h;fstat(`<button class="sm pri" onclick="reconn()">🔌 Prijungti ${esc(h.name)}</button>`)}
+  }catch(e){}
+}
+async function unlinkF(){fh=null;pendH=null;try{await idb('readwrite',s=>s.delete('fh'))}catch(e){}fstat('');toast('Failas atjungtas');render()}
+const stu=id=>D.students.find(s=>s.id==id)||{name:'?'};
+const priceC=l=>Math.round(l.dur*D.settings.rate*100);
+const lStart=l=>new Date(l.date+'T'+l.start+':00');
+const lEnd=l=>new Date(l.date+'T'+endT(l.start,l.dur)+':00');
+let tab='home',cal={y:new Date().getFullYear(),m:new Date().getMonth(),sel:iso(new Date())},curInv=null;
+
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';setTimeout(()=>t.style.display='none',2800)}
+function modal(h){const m=$('#modal');m.innerHTML='<div>'+h+'</div>';m.style.display='flex'}
+function closeM(){$('#modal').style.display='none'}
+
+/* ---- lesson generation ---- */
+function gen(y,m){
+  const last=new Date(y,m+1,0).getDate();
+  for(const s of D.students){
+    if(!s.active||s.day==null)continue;
+    for(let d=1;d<=last;d++){
+      const dt=new Date(y,m,d);if(dt.getDay()!=s.day)continue;
+      const k=iso(dt);
+      if(k<s.from||(s.until&&k>s.until)||s.ex.includes(k)||D.lessons.some(l=>l.sid==s.id&&l.date==k))continue;
+      D.lessons.push({id:uid(),sid:s.id,date:k,start:s.start,dur:s.dur,fmt:s.fmt,status:'planned',gen:1});
+    }
+  }
+}
+function genAll(){const n=new Date();for(let i=0;i<3;i++){const d=new Date(n.getFullYear(),n.getMonth()+i,1);gen(d.getFullYear(),d.getMonth())}gen(cal.y,cal.m);save(false)}
+function regen(sid){const t=iso(new Date());D.lessons=D.lessons.filter(l=>!(l.sid==sid&&l.gen&&l.status=='planned'&&l.date>=t));genAll()}
+
+/* ---- lesson actions ---- */
+function setSt(id,s){D.lessons.find(l=>l.id==id).status=s;save();render()}
+function lessonRow(l,showDate){
+  const bt=l.status=='planned'
+   ?`<button class="sm ok" onclick="setSt('${l.id}','done')">✓ Įvyko</button><button class="sm bad" onclick="setSt('${l.id}','missed')">✗ Neįvyko</button>`
+   :`<span class="st ${l.status}">${ST[l.status]}</span><button class="sm" onclick="setSt('${l.id}','planned')">↺</button>`;
+  return `<div class="row"><div><b>${l.start}–${endT(l.start,l.dur)}</b> ${esc(stu(l.sid).name)}<br><small>${showDate?DAYS[pd(l.date).getDay()].slice(0,3)+'. '+l.date+' · ':''}${l.fmt} · ${durT(l.dur)} · ${money(priceC(l))} €</small></div>
+  <div class="acts">${bt}<button class="sm" onclick="editL('${l.id}')">✎</button></div></div>`;
+}
+function editL(id,date){
+  const l=D.lessons.find(x=>x.id==id)||{date:date||iso(new Date()),sid:D.students[0].id,start:'16:00',dur:1,fmt:stu(D.students[0].id).fmt,status:'planned'};
+  const so=D.students.map(s=>`<option value="${s.id}" ${s.id==l.sid?'selected':''}>${esc(s.name)}</option>`).join('');
+  modal(`<h3>${id?'Keisti pamoką':'Nauja pamoka'}</h3>
+  <label>Mokinys</label><select id="l_s">${so}</select>
+  <div class="two"><div><label>Data</label><input type="date" id="l_d" value="${l.date}"></div><div><label>Pradžia</label><input type="time" id="l_t" value="${l.start}"></div></div>
+  <div class="two"><div><label>Trukmė</label><select id="l_u"><option value="1" ${l.dur==1?'selected':''}>1 val.</option><option value="1.5" ${l.dur==1.5?'selected':''}>1,5 val.</option></select></div>
+  <div><label>Formatas</label><select id="l_f"><option value="nuotolinės" ${l.fmt=='nuotolinės'?'selected':''}>nuotolinės</option><option value="gyvos" ${l.fmt=='gyvos'?'selected':''}>gyvos</option></select></div></div>
+  <label>Būsena</label><select id="l_st">${Object.entries(ST).map(([k,v])=>`<option value="${k}" ${k==l.status?'selected':''}>${v}</option>`).join('')}</select>
+  <p class="acts"><button class="pri" onclick="saveL('${id||''}')">Išsaugoti</button><button onclick="closeM()">Atšaukti</button>${id?`<button class="bad" onclick="delL('${id}')">Ištrinti</button>`:''}</p>`);
+}
+function exclude(l){if(l.gen){const s=D.students.find(x=>x.id==l.sid);if(s&&!s.ex.includes(l.date))s.ex.push(l.date)}}
+function saveL(id){
+  let l=D.lessons.find(x=>x.id==id);
+  if(!l){l={id:uid()};D.lessons.push(l)}
+  else if(l.date!=$('#l_d').value||l.sid!=$('#l_s').value)exclude(l);
+  Object.assign(l,{sid:$('#l_s').value,date:$('#l_d').value,start:$('#l_t').value,dur:+$('#l_u').value,fmt:$('#l_f').value,status:$('#l_st').value});
+  save();closeM();render()
+}
+function delL(id){if(!confirm('Ištrinti pamoką?'))return;const l=D.lessons.find(x=>x.id==id);exclude(l);D.lessons=D.lessons.filter(x=>x!=l);save();closeM();render()}
+
+/* ---- views ---- */
+function home(){
+  const now=new Date(),ls=D.lessons.filter(l=>l.status=='planned').sort(cmp);
+  const up=ls.filter(l=>lEnd(l)>=now),past=ls.filter(l=>lEnd(l)<now);
+  let h='';
+  if(past.length)h+=`<div class="card warn"><b>Pažymėkite rezultatą (${past.length})</b>${past.slice(-6).map(l=>lessonRow(l,1)).join('')}</div>`;
+  const n=up[0];
+  if(n){
+    const today=pd(iso(now)),df=Math.round((pd(n.date)-today)/864e5);
+    const rel=df==0?'Šiandien':df==1?'Rytoj':'Po '+df+' d.';
+    h+=`<div class="card big"><small>Artimiausia pamoka · ${rel}</small><h2>${esc(stu(n.sid).name)}</h2>
+    <div>${DAYS[pd(n.date).getDay()]}, ${n.date}</div><div class="t">${n.start}–${endT(n.start,n.dur)}</div>
+    <span class="tag">${n.fmt}</span><span class="tag">${durT(n.dur)}</span><span class="tag">${money(priceC(n))} €</span>
+    <p class="acts"><button class="ok" onclick="setSt('${n.id}','done')">✓ Įvyko</button><button class="bad" onclick="setSt('${n.id}','missed')">✗ Neįvyko</button><button onclick="editL('${n.id}')">✎ Keisti</button></p></div>`;
+    h+='<h3>Kitos pamokos</h3><div class="grid">'+up.slice(1,5).map(l=>`<div class="card" onclick="editL('${l.id}')"><b>${esc(stu(l.sid).name)}</b><br>${DAYS[pd(l.date).getDay()].slice(0,3)}. ${l.date.slice(5)}<br>${l.start}–${endT(l.start,l.dur)}<br><small>${l.fmt} · ${durT(l.dur)} · ${money(priceC(l))} €</small></div>`).join('')+'</div>';
+  }else h+='<div class="card">Nėra suplanuotų pamokų. Pridėkite jas kalendoriuje arba mokinių skiltyje.</div>';
+  const mk=iso(now).slice(0,7),dn=D.lessons.filter(l=>l.status=='done'&&l.date.startsWith(mk));
+  h+=`<div class="card"><small>${MONTHS[now.getMonth()]} – įvykusios pamokos</small><br><b>${dn.length} pam.</b> · <b>${money(dn.reduce((a,l)=>a+priceC(l),0))} €</b></div>`;
+  return h;
+}
+function calendar(){
+  gen(cal.y,cal.m);save(false);
+  const f=new Date(cal.y,cal.m,1),off=(f.getDay()+6)%7,days=new Date(cal.y,cal.m+1,0).getDate(),td=iso(new Date());
+  let h=`<div class="bar"><button onclick="calGo(-1)">‹</button><b>${cal.y} ${MONTHS[cal.m]}</b><button onclick="calGo(1)">›</button></div><div class="cal">`+['Pr','An','Tr','Kt','Pn','Št','Sk'].map(x=>`<div class="h">${x}</div>`).join('');
+  for(let i=0;i<off;i++)h+='<div></div>';
+  for(let d=1;d<=days;d++){
+    const k=cal.y+'-'+pad(cal.m+1)+'-'+pad(d),ls=D.lessons.filter(l=>l.date==k).sort(cmp);
+    h+=`<div class="day ${k==cal.sel?'sel':''} ${k==td?'today':''}" onclick="cal.sel='${k}';render()"><div class="n">${d}</div>${ls.map(l=>`<div class="chip ${l.status}">${l.start} ${esc(stu(l.sid).name)}</div>`).join('')}</div>`;
+  }
+  h+='</div>';
+  const dl=D.lessons.filter(l=>l.date==cal.sel).sort(cmp);
+  h+=`<div class="card" style="margin-top:12px"><div class="bar"><b>${DAYS[pd(cal.sel).getDay()]}, ${cal.sel}</b><button class="sm pri" onclick="editL('','${cal.sel}')">+ Pamoka</button></div>${dl.map(l=>lessonRow(l)).join('')||'<small>Pamokų nėra</small>'}</div>`;
+  const mk=cal.y+'-'+pad(cal.m+1),dn=D.lessons.filter(l=>l.status=='done'&&l.date.startsWith(mk));
+  h+=`<div class="card"><small>Mėnuo:</small> įvyko <b>${dn.length}</b> · uždirbta <b>${money(dn.reduce((a,l)=>a+priceC(l),0))} €</b> · neįvyko ${D.lessons.filter(l=>l.status=='missed'&&l.date.startsWith(mk)).length}</div>`;
+  return h;
+}
+function calGo(n){const d=new Date(cal.y,cal.m+n,1);cal.y=d.getFullYear();cal.m=d.getMonth();cal.sel=iso(d);render()}
+
+function students(){
+  return `<div class="bar"><b>Mokiniai</b><button class="pri sm" onclick="editS()">+ Mokinys</button></div>`+D.students.map(s=>`<div class="card"><div class="bar"><b>${esc(s.name)} ${s.active?'':'<small>(neaktyvus)</small>'}</b><button class="sm" onclick="editS('${s.id}')">✎ Keisti</button></div>
+  <span class="tag">${s.day==null?'—':DAYS[s.day]}, ${s.start}–${endT(s.start,s.dur)}</span><span class="tag">${s.fmt}</span><span class="tag">${durT(s.dur)} · ${money(Math.round(s.dur*D.settings.rate*100))} €</span></div>`).join('');
+}
+function editS(id){
+  const s=D.students.find(x=>x.id==id)||{name:'',fmt:'nuotolinės',day:1,start:'16:00',dur:1,from:iso(new Date()),until:'',ex:[],active:true};
+  modal(`<h3>${id?'Mokinys':'Naujas mokinys'}</h3><label>Vardas</label><input id="s_n" value="${esc(s.name)}">
+  <div class="two"><div><label>Formatas</label><select id="s_f"><option ${s.fmt=='nuotolinės'?'selected':''}>nuotolinės</option><option ${s.fmt=='gyvos'?'selected':''}>gyvos</option></select></div>
+  <div><label>Trukmė</label><select id="s_u"><option value="1" ${s.dur==1?'selected':''}>1 val.</option><option value="1.5" ${s.dur==1.5?'selected':''}>1,5 val.</option></select></div></div>
+  <div class="two"><div><label>Savaitės diena</label><select id="s_d">${DAYS.map((d,i)=>`<option value="${i}" ${s.day==i?'selected':''}>${d}</option>`).join('')}</select></div>
+  <div><label>Pradžia</label><input type="time" id="s_t" value="${s.start}"></div></div>
+  <div class="two"><div><label>Nuo</label><input type="date" id="s_from" value="${s.from}"></div><div><label>Iki (nebūtina)</label><input type="date" id="s_until" value="${s.until||''}"></div></div>
+  <label>Praleistos datos (YYYY-MM-DD, kableliais)</label><input id="s_ex" value="${s.ex.join(', ')}">
+  <label><input type="checkbox" id="s_a" ${s.active?'checked':''}> Aktyvus</label>
+  <p class="mut" style="font-size:12px">Išsaugojus, būsimos suplanuotos pamokos bus sugeneruotos iš naujo.</p>
+  <p class="acts"><button class="pri" onclick="saveS('${id||''}')">Išsaugoti</button><button onclick="closeM()">Atšaukti</button></p>`);
+}
+function saveS(id){
+  let s=D.students.find(x=>x.id==id);if(!s){s={id:uid()};D.students.push(s)}
+  const n=$('#s_n').value.trim();if(!n)return toast('Įveskite vardą');
+  Object.assign(s,{name:n,fmt:$('#s_f').value,dur:+$('#s_u').value,day:+$('#s_d').value,start:$('#s_t').value,from:$('#s_from').value,until:$('#s_until').value,
+   ex:$('#s_ex').value.split(/[,\s]+/).filter(x=>/^\d{4}-\d\d-\d\d$/.test(x)),active:$('#s_a').checked});
+  regen(s.id);closeM();render()
+}
+
+/* ---- invoice ---- */
+const U=['nulis','vienas','du','trys','keturi','penki','šeši','septyni','aštuoni','devyni','dešimt','vienuolika','dvylika','trylika','keturiolika','penkiolika','šešiolika','septyniolika','aštuoniolika','devyniolika'];
+const T=['','','dvidešimt','trisdešimt','keturiasdešimt','penkiasdešimt','šešiasdešimt','septyniasdešimt','aštuoniasdešimt','devyniasdešimt'];
+function w999(n){const s=[],h=Math.floor(n/100),r=n%100;if(h)s.push(h==1?'šimtas':U[h]+' šimtai');if(r>=20){s.push(T[Math.floor(r/10)]);if(r%10)s.push(U[r%10])}else if(r)s.push(U[r]);return s.join(' ')}
+function words(n){
+  if(!n)return 'nulis';const th=Math.floor(n/1000),r=n%1000,s=[];
+  if(th){const l=th%100,e=th%10;s.push(th==1?'tūkstantis':w999(th)+' '+((l>=10&&l<20)||e==0?'tūkstančių':e==1?'tūkstantis':'tūkstančiai'))}
+  if(r)s.push(w999(r));return s.join(' ');
+}
+function sumWords(c){const e=Math.floor(c/100),ct=c%100,l=e%100,d=e%10;
+  return words(e)+' '+((l>=10&&l<20)||d==0?'eurų':d==1?'euras':'eurai')+(ct?' ir '+pad(ct)+' ct':'')}
+function buildInv(){
+  const mk=$('#i_m').value,map={};
+  D.lessons.filter(l=>l.status=='done'&&l.date.startsWith(mk)).sort(cmp).forEach(l=>{
+    const dw=pd(l.date).getDay(),k=[l.sid,dw,l.start,l.dur,l.fmt].join('|');
+    (map[k]=map[k]||{l,dw,q:0}).q++;
+  });
+  const idx=id=>D.students.findIndex(s=>s.id==id);
+  const lines=Object.values(map).sort((a,b)=>idx(a.l.sid)-idx(b.l.sid)||a.l.start.localeCompare(b.l.start)).map(({l,dw,q})=>{
+    const u=priceC(l);
+    return {text:`Papildomos ${l.fmt} lietuvių kalbos pamokos. ${stu(l.sid).name}; ${ROM[dw]}, ${l.start}-${endT(l.start,l.dur)}, ${durT(l.dur)}`,q,u,sum:u*q};
+  });
+  const total=lines.reduce((a,x)=>a+x.sum,0);
+  curInv={series:$('#i_s').value,no:$('#i_n').value,date:$('#i_d').value,month:mk,lines,total,provider:D.settings.provider,client:D.settings.client,issuer:D.settings.issuer,receiver:D.settings.receiver};
+  $('#i_prev').innerHTML=invHTML(curInv);
+  const pend=D.lessons.filter(l=>l.status=='planned'&&l.date.startsWith(mk)).length;
+  $('#i_warn').textContent=pend?`Dėmesio: šį mėnesį dar ${pend} pamokų be rezultato (į sąskaitą neįtrauktos).`:'';
+}
+function invHTML(v){
+  return `<div class="invoice"><h2>SĄSKAITA FAKTŪRA</h2><p class="c">Serija ${esc(v.series)} Nr. ${esc(v.no)}</p><p class="c">${esc(v.date)}</p>
+  <p>${nl(v.provider)}</p><p>${nl(v.client)}</p>
+  <table><tr><th>PASLAUGOS PAVADINIMAS</th><th>MATAS</th><th>KIEKIS</th><th>KAINA EUR</th><th>SUMA EUR</th></tr>
+  ${v.lines.map(x=>`<tr><td>${esc(x.text)}</td><td>1 vnt.</td><td class="r">${x.q}</td><td class="r">${money(x.u)}</td><td class="r">${money(x.sum)}</td></tr>`).join('')}
+  <tr><td colspan="4"><b>Bendra suma:</b></td><td class="r"><b>${money(v.total)}</b></td></tr></table>
+  <p>Suma žodžiais: ${sumWords(v.total)}</p><p>Sąskaitą išrašė: ${esc(v.issuer)}</p><p>Sąskaitą priėmė: ${esc(v.receiver)}</p></div>`;
+}
+function invoice(){
+  const n=new Date(),mk=iso(n).slice(0,7),last=iso(new Date(n.getFullYear(),n.getMonth()+1,0));
+  return `<div class="card"><b>Sąskaita faktūra</b><div class="two"><div><label>Mėnuo</label><input type="month" id="i_m" value="${mk}" onchange="mChg()"></div><div><label>Sąskaitos data</label><input type="date" id="i_d" value="${last}"></div></div>
+  <div class="two"><div><label>Serija</label><input id="i_s" value="${esc(D.settings.series)}"></div><div><label>Numeris</label><input id="i_n" value="${pad(D.settings.nextNo).padStart(3,'0')}"></div></div>
+  <p class="acts"><button class="pri" onclick="buildInv()">Sudaryti</button><button onclick="saveInv()">💾 Išsaugoti</button><button onclick="printInv()">🖨 PDF / Spausdinti</button></p>
+  <small id="i_warn" style="color:var(--bad)"></small></div><div id="i_prev"></div>
+  <h3>Išsaugotos sąskaitos</h3>`+(D.invoices.map((v,i)=>`<div class="card row"><span><b>${esc(v.series)} Nr. ${esc(v.no)}</b> · ${v.date} · ${money(v.total)} €</span><span class="acts"><button class="sm" onclick="openInv(${i})">Atidaryti</button><button class="sm bad" onclick="delInv(${i})">✕</button></span></div>`).join('')||'<small>Kol kas nėra</small>');
+}
+function mChg(){const [y,m]=$('#i_m').value.split('-').map(Number);$('#i_d').value=iso(new Date(y,m,0))}
+function saveInv(){
+  if(!curInv)buildInv();
+  const i=D.invoices.findIndex(v=>v.series==curInv.series&&v.no==curInv.no);
+  if(i>=0){if(!confirm('Tokia sąskaita jau yra. Pakeisti?'))return;D.invoices[i]=curInv}else D.invoices.push(curInv);
+  const nn=parseInt(curInv.no,10);if(nn>=D.settings.nextNo)D.settings.nextNo=nn+1;
+  save();toast('Sąskaita išsaugota');render()
+}
+function openInv(i){curInv=D.invoices[i];$('#i_prev').innerHTML=invHTML(curInv);$('#i_s').value=curInv.series;$('#i_n').value=curInv.no;$('#i_d').value=curInv.date;$('#i_m').value=curInv.month;scrollTo(0,0)}
+function delInv(i){if(confirm('Ištrinti sąskaitą?')){D.invoices.splice(i,1);save();render()}}
+function printInv(){if(!curInv)buildInv();$('#printArea').innerHTML=invHTML(curInv);document.title='Saskaita_'+curInv.series+'_'+curInv.no;window.print()}
+
+/* ---- settings / data ---- */
+function settings(){const s=D.settings;return `${acctCard()}<div class="card"><b>Nustatymai</b>
+  <div class="two"><div><label>Kaina už valandą, €</label><input type="number" id="c_r" value="${s.rate}"></div><div><label>Kitas sąskaitos nr.</label><input type="number" id="c_n" value="${s.nextNo}"></div></div>
+  <label>Serija</label><input id="c_s" value="${esc(s.series)}"><label>Paslaugos teikėjas (sąskaitoje)</label><textarea id="c_p" rows="5">${esc(s.provider)}</textarea>
+  <label>Paslaugos gavėjas (sąskaitoje)</label><textarea id="c_c" rows="4">${esc(s.client)}</textarea>
+  <div class="two"><div><label>Sąskaitą išrašė</label><input id="c_i" value="${esc(s.issuer)}"></div><div><label>Sąskaitą priėmė</label><input id="c_v" value="${esc(s.receiver)}"></div></div>
+  <p><button class="pri" onclick="saveSet()">Išsaugoti</button></p></div>
+  ${sb?'':`<div class="card"><b>Automatinis saugojimas į JSON failą</b><p class="mut" style="font-size:13px">${fh?'Prijungta: '+esc(fh.name)+'. Visi pakeitimai įrašomi automatiškai.':'Neprijungta. Pasirinkite failą – duomenys bus skaitomi iš jo ir automatiškai įrašomi.'}</p>
+  <p class="acts"><button class="pri" onclick="pickF(false)">📂 Pasirinkti esamą</button><button onclick="pickF(true)">➕ Sukurti naują</button>${fh?'<button onclick="unlinkF()">Atjungti</button>':''}</p></div>`}
+  <div class="card"><b>Duomenys (JSON) ir kalendorius</b><p class="acts"><button onclick="exportJ()">⬇ Eksportuoti JSON</button>
+  <label class="btn">⬆ Importuoti JSON<input type="file" accept=".json" hidden onchange="impJ(this)"></label>
+  <label class="btn">📅 Importuoti .ics<input type="file" accept=".ics" hidden onchange="impICS(this)"></label></p>
+  <small>.ics: paimami tik įvykiai, kurių pavadinime yra mokinio vardas. Duomenys saugomi šioje naršyklėje; darykite JSON kopijas.</small></div>`}
+function saveSet(){Object.assign(D.settings,{rate:+$('#c_r').value||16,nextNo:+$('#c_n').value||1,series:$('#c_s').value,provider:$('#c_p').value,client:$('#c_c').value,issuer:$('#c_i').value,receiver:$('#c_v').value});save();toast('Išsaugota')}
+function exportJ(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(D,null,1)],{type:'application/json'}));a.download='pamokos-'+iso(new Date())+'.json';a.click()}
+async function impJ(el){try{const j=JSON.parse(await el.files[0].text());if(!j.students||!j.lessons)throw 0;D=j;save();toast('Importuota');render()}catch(e){toast('Netinkamas JSON failas')}}
+const norm=s=>s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+function pdt(e,k){
+  const m=e.match(new RegExp('^'+k+'([^:\\r\\n]*):(\\d{8})(?:T(\\d{2})(\\d{2})(\\d{2}))?(Z)?','m'));
+  if(!m||m[3]===undefined)return null;
+  const y=+m[2].slice(0,4),mo=+m[2].slice(4,6)-1,d=+m[2].slice(6,8);
+  return m[6]?new Date(Date.UTC(y,mo,d,+m[3],+m[4])):new Date(y,mo,d,+m[3],+m[4]);
+}
+const tm=d=>pad(d.getHours())+':'+pad(d.getMinutes());
+async function impICS(el){
+  const txt=(await el.files[0].text()).replace(/\r?\n[ \t]/g,'');
+  const evs=txt.split('BEGIN:VEVENT').slice(1).map(e=>e.split('END:VEVENT')[0]);
+  let ser=0,one=0;
+  for(const e of evs){
+    const sum=((e.match(/^SUMMARY:(.*)$/m)||[])[1]||'').trim(),s=D.students.find(x=>norm(sum).includes(norm(x.name)));
+    const a=pdt(e,'DTSTART'),b=pdt(e,'DTEND');if(!s||!a||!b)continue;
+    const dur=Math.round((b-a)/18e5)/2;
+    if(/FREQ=WEEKLY/.test(e)){
+      const ex=[...e.matchAll(/^EXDATE[^:\r\n]*:(.*)$/gm)].flatMap(m=>m[1].split(',').map(x=>x.slice(0,4)+'-'+x.slice(4,6)+'-'+x.slice(6,8)));
+      const u=(e.match(/UNTIL=(\d{4})(\d\d)(\d\d)/)||[]);
+      Object.assign(s,{day:a.getDay(),start:tm(a),dur,from:iso(a),until:u[1]?u[1]+'-'+u[2]+'-'+u[3]:'',ex,active:true});
+      regen(s.id);ser++;
+    }else if(!D.lessons.some(l=>l.sid==s.id&&l.date==iso(a)&&l.start==tm(a))){
+      D.lessons.push({id:uid(),sid:s.id,date:iso(a),start:tm(a),dur,fmt:s.fmt,status:'planned'});one++;
+    }
+  }
+  save();toast(`Importuota: ${ser} serijos, ${one} pavienės pamokos`);render();
+}
+
+/* ---- Supabase (debesis) ---- */
+const SB_URL='https://qjqtslpgyflkaxxyhejz.supabase.co';
+const SB_KEY='sb_publishable_cCPAFFDaLbpu41EPzdq6ow_0q4x-8uW';   // <-- įklijuokite Supabase „anon / publishable“ raktą (Project Settings → API)
+let sb=null,user=null,skip=false,ready=false,cTimer=null;
+try{if(window.supabase&&SB_KEY)sb=supabase.createClient(SB_URL,SB_KEY)}catch(e){}
+const cst=t=>{const e=$('#cstat');if(e)e.textContent=t};
+async function push(){
+  if(!sb||!user)return;cst('☁ įrašoma…');
+  const{error}=await sb.from('app_data').upsert({user_id:user.id,data:D,updated_at:D.updated});
+  cst(error?'⚠ nesinchronizuota':'☁ ✓');
+}
+async function pull(){
+  if(!sb||!user)return;
+  const{data,error}=await sb.from('app_data').select('data').eq('user_id',user.id).maybeSingle();
+  if(error){cst('⚠ klaida');return}
+  if(!data){if(!D.updated)D.updated=new Date().toISOString();save(false);return push()}
+  const r=data.data,ru=r.updated||'',lu=D.updated||'';
+  if(ru>lu){D=r;save(false);genAll();render();cst('☁ ✓')}
+  else if(lu>ru)push();else cst('☁ ✓');
+}
+async function initCloud(){
+  try{
+    const{data}=await sb.auth.getSession();user=data.session?data.session.user:null;
+    sb.auth.onAuthStateChange((ev,ses)=>{const u=ses?ses.user:null,was=user;user=u;
+      if(u&&(!was||was.id!=u.id))pull().then(render);else if(!u)render()});
+    if(user)await pull();
+  }catch(e){cst('⚠ nėra ryšio')}
+  ready=true;render();
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)pull()});
+}
+function loginView(){return `<div class="card"><h3>Prisijungimas</h3><p class="mut">Įveskite el. paštą – gausite nuorodą prisijungti. Duomenys bus sinchronizuojami visuose įrenginiuose.</p>
+  <label>El. paštas</label><input type="email" id="lg" autocomplete="email"><p class="acts"><button class="pri" onclick="login()">Gauti nuorodą</button><button onclick="skip=true;render()">Dirbti be prisijungimo</button></p></div>`}
+async function login(){
+  const e=$('#lg').value.trim();if(!e)return;
+  const{error}=await sb.auth.signInWithOtp({email:e,options:{emailRedirectTo:location.href.split('#')[0]}});
+  toast(error?'Klaida: '+error.message:'Nuoroda išsiųsta – patikrinkite paštą');
+}
+function acctCard(){
+  if(!sb)return '';
+  return user?`<div class="card"><b>Paskyra</b><p class="mut">${esc(user.email)} · <span id="cstat2">sinchronizuojama automatiškai</span></p><p class="acts"><button onclick="pull().then(()=>toast('Atnaujinta'))">🔄 Sinchronizuoti dabar</button><button onclick="logout()">Atsijungti</button></p></div>`
+   :`<div class="card"><b>Paskyra</b><p class="mut">Dirbate be prisijungimo (duomenys tik šiame įrenginyje).</p><p><button class="pri" onclick="skip=false;render()">Prisijungti</button></p></div>`;
+}
+async function logout(){
+  if(!confirm('Atsijungti? Vietinė kopija šiame įrenginyje bus išvalyta.'))return;
+  await sb.auth.signOut();try{localStorage.removeItem(K)}catch(e){}
+  D=JSON.parse(JSON.stringify(DEF));user=null;cst('');render();
+}
+
+/* ---- shell ---- */
+function render(){
+  if(sb&&!ready){$('#app').innerHTML='<p class="mut">Kraunama…</p>';return}
+  if(sb&&!user&&!skip){$('#nav').innerHTML='';$('#app').innerHTML=loginView();return}
+  const tabs={home:'Pradžia',cal:'Kalendorius',stu:'Mokiniai',inv:'Sąskaita',set:'Nustatymai'};
+  $('#nav').innerHTML=Object.entries(tabs).map(([k,v])=>`<button class="${k==tab?'on':''}" onclick="tab='${k}';render()">${v}</button>`).join('');
+  $('#app').innerHTML={home,cal:calendar,stu:students,inv:invoice,set:settings}[tab]();
+  if(tab=='inv'&&curInv){$('#i_prev').innerHTML=invHTML(curInv)}
+}
+genAll();render();sb?initCloud():initF();
+</script>
+</body>
+</html>
